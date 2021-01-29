@@ -1,7 +1,11 @@
+/**
+ * Scraper for getting player data from kyykkaliiga.fi
+ * Knowingly tried to write messier code to do something fast.
+ * Rather that focus on mainteinability.
+ */
+
 const jsdom = require("jsdom");
-const fetch = require("node-fetch");
 const got = require("got");
-const scraper = require("table-scraper");
 const { JSDOM } = jsdom;
 
 
@@ -33,8 +37,6 @@ async function handleMatchLinks(matchLinks) {
 
 // This is stupid and bad and idiotic
 function identifyTeamShort(header, teamName, teamShorts) {
-    console.debug("header[0]", header[0])
-    console.debug("teamname", teamName)
     const indexWithTeamName = header[0].toLowerCase().search(teamName) !== -1 ? 0 : 1
     
     const correctShort = header[indexWithTeamName].includes(teamShorts[0][0]) ? 0 : 1;
@@ -43,7 +45,9 @@ function identifyTeamShort(header, teamName, teamShorts) {
 
 async function getStatsFromDom(dom, teamName) {
     let headerText = dom.window.document.querySelector('div h2').textContent;
-    const splitHeader = headerText.split("—");
+    // Risky split :sweaty_smile:
+    const splitHeader = headerText.split("\n\t–");
+    const date = headerText.split(",")[1].trim();
     let reg = /\(([^)]*)\)/, match;
     const teamShorts = [];
     
@@ -63,8 +67,6 @@ async function getStatsFromDom(dom, teamName) {
 
     const players = new Map();
     rowStats.forEach(player => {
-        console.log("player.teamShort: ", player.teamShort )
-        console.log("teamShort", teamShort)
         if(player.teamShort === teamShort) {
 
             if(!players.has(player.name)){
@@ -74,7 +76,8 @@ async function getStatsFromDom(dom, teamName) {
             players.get(player.name).push(player);
         }
     });
-    console.debug(players)
+    const result = {date, players}
+    console.debug(result)
 }
 
 function getPlayerStatsFromRow(statRow, position) {
@@ -95,7 +98,7 @@ function createStats(row, position) {
     const stats = row.slice(1);
     const throws = row.slice(1, 5);
     return {
-        name: row[0],
+        name: row[0].split(',').map(x => x.trim())[0], // redundant but let it be
         hka: row[6],
         hauki: stats.filter(x => x.toUpperCase() === 'H').length,
         amount: throws.filter(x => x.toUpperCase('E')).length,
@@ -105,7 +108,7 @@ function createStats(row, position) {
     };
 }
 
-const teamName = "kuha ei oo hauki"
+const teamName = "hommattiinatsku"
 //const matchLinks = getTeamMatchLinks(teamName);
 //handleMatchLinks(matchLinks);
 const mockData = JSDOM.fromFile('./mock_data.html').then(x => {
