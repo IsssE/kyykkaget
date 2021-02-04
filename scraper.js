@@ -64,24 +64,43 @@ function getStatsFromDom(dom, teamName) {
     const teamStatRows = [...dom.window.document.querySelectorAll('.heittorivi_aloittava'),
     ...dom.window.document.querySelectorAll('.heittorivi_ei_aloittava')].filter(x => x.textContent ? true : false);
 
-
+    
     const rowStats = teamStatRows.map((x, index) => {
         return getPlayerStatsFromRow(x.textContent, (index % 4) + 1);
     })
 
-    const players = new Map();
+    const players = []
     rowStats.forEach(player => {
         if (player.teamShort === teamShort) {
-
-            if (!players.has(player.name)) {
-                players.set(player.name, []);
-            }
-
-            players.get(player.name).push(player);
+            players.push(player);
         }
     });
-    const result = { date, players }
+
+    const matchData = getMatchTeamDataFromDom(dom)
+    let teamMatch = {};
+    matchData.teamStart.name === teamShort ? 
+        teamMatch = matchData.teamStart :
+        teamMatch = matchData.teamNonStart
+    
+    
+    const result = { date, teamMatch, players }
     return result;
+}
+
+function getMatchTeamDataFromDom(dom) {
+    const document = dom.window.document;
+    const teamStart = {
+        name: document.querySelector(".lopputulos .aloittava_nimi").textContent.replace(":", "").trim(),
+        roundScores: [...document.querySelectorAll(".eratulos .aloittava_pisteet")].map(x => x.textContent.trim()),
+        endScore: document.querySelector(".lopputulos .aloittava_pisteet").textContent.trim(),
+    }
+    const teamNonStart =  {
+        name: document.querySelector(".lopputulos .ei_aloittava_nimi").textContent.replace(":", "").trim(),
+        roundScores: [...document.querySelectorAll(".eratulos .ei_aloittava_pisteet")].map(x => x.textContent.trim()),
+        endScore: document.querySelector(".lopputulos .ei_aloittava_pisteet").textContent.trim(),
+    }
+    const result = {teamStart, teamNonStart}
+    return result
 }
 
 function getPlayerStatsFromRow(statRow, position) {
@@ -111,20 +130,12 @@ function createStats(row, position) {
         throws
     };
 }
-function writeDataToFile(maps, teamName) {
+function writeDataToFile(results, teamName) {
     const fileName = `${teamName}.json`;
 
-FileSystem.closeSync(FileSystem.openSync(fileName, 'w'))
-const all = []
-    maps.forEach(map => {
-        const data = []
-        map.players.forEach(x => {
-            data.push(x);
-        });
-        const match = { date: map.date, data}
-        all.push(match);
-    })
-    FileSystem.appendFile(fileName ,JSON.stringify(all), (error) => {
+    FileSystem.closeSync(FileSystem.openSync(fileName, 'w'))
+
+    FileSystem.appendFile(fileName, JSON.stringify(results), (error) => {
         if (error) throw error;
     });
 }
@@ -133,7 +144,8 @@ const teamName = "hommattiinatsku"
 getTeamMatchLinks(teamName).then(x => {
     handleMatchLinks(x, teamName);
 });
-/*const mockData = JSDOM.fromFile('./mock_data.html').then(x => {
+/*
+const mockData = JSDOM.fromFile('./mock_data.html').then(x => {
     getStatsFromDom(x, teamName);
 });*/
 //getStatsFromDom(mockData);
