@@ -4,54 +4,58 @@
  * Rather that focus on mainteinability.
  */
 
+const FileSystem = require("fs");
 const jsdom = require("jsdom");
 const got = require("got");
 const { JSDOM } = jsdom;
 
 
 async function getTeamMatchLinks(teamName) {
-    got(`https://kyykkaliiga.fi/joukkueet/${teamName}`).then(response => {
-    
-    const dom = new JSDOM(response.body);
-    const linkList = [...dom.window.document.querySelectorAll('a')];
-    
-    return linkList
-    .filter(x => {
-        if (x.href && x.text == "Tilasto") {
-            return true;
-        }
-        else false;
-    })
-    .map(x => x.href);
-});
+    return got(`https://kyykkaliiga.fi/joukkueet/${teamName}`).then(response => {
+        const dom = new JSDOM(response.body);
+        const linkList = [...dom.window.document.querySelectorAll('a')];
+
+        return linkList
+            .filter(x => {
+                if (x.href && x.text == "Tilasto") {
+                    return true;
+                }
+                else false;
+            })
+            .map(x => x.href);
+    });
 }
 
-async function handleMatchLinks(matchLinks) {
-    for(link in matchLinks) {
-        got(link).then(response => {
+async function handleMatchLinks(matchLinks, teamName) {
+    const maps = [];
+    for (link of matchLinks) {
+        await got(link.toString()).then((response, index) => {
             const dom = new JSDOM(response.body);
-            getStatsfromdom(dom);
+            const matchPlayerData = getStatsFromDom(dom, teamName);
+            maps.push(matchPlayerData);
         })
     }
+
+    writeDataToFile(maps, teamName);
 }
 
 // This is stupid and bad and idiotic
 function identifyTeamShort(header, teamName, teamShorts) {
     const indexWithTeamName = header[0].toLowerCase().search(teamName) !== -1 ? 0 : 1
-    
+
     const correctShort = header[indexWithTeamName].includes(teamShorts[0][0]) ? 0 : 1;
     return teamShorts[correctShort][1]
 }
 
-async function getStatsFromDom(dom, teamName) {
+function getStatsFromDom(dom, teamName) {
     let headerText = dom.window.document.querySelector('div h2').textContent;
     // Risky split :sweaty_smile:
     const splitHeader = headerText.split("\n\t–");
     const date = headerText.split(",")[1].trim();
     let reg = /\(([^)]*)\)/, match;
     const teamShorts = [];
-    
-    while(match = reg.exec(headerText)) {
+
+    while (match = reg.exec(headerText)) {
         teamShorts.push(match);
         headerText = headerText.replace(match[0], " ");
     }
@@ -59,38 +63,38 @@ async function getStatsFromDom(dom, teamName) {
 
     const teamStatRows = [...dom.window.document.querySelectorAll('.heittorivi_aloittava'),
     ...dom.window.document.querySelectorAll('.heittorivi_ei_aloittava')].filter(x => x.textContent ? true : false);
-    
-    
+
+
     const rowStats = teamStatRows.map((x, index) => {
         return getPlayerStatsFromRow(x.textContent, (index % 4) + 1);
     })
 
     const players = new Map();
     rowStats.forEach(player => {
-        if(player.teamShort === teamShort) {
+        if (player.teamShort === teamShort) {
 
-            if(!players.has(player.name)){
+            if (!players.has(player.name)) {
                 players.set(player.name, []);
             }
-            
+
             players.get(player.name).push(player);
         }
     });
-    const result = {date, players}
-    console.debug(result)
+    const result = { date, players }
+    return result;
 }
 
 function getPlayerStatsFromRow(statRow, position) {
     // Sorry :D
-    const parsedRow = statRow 
-    .replace(/(\t)/gm,"")       // remove \t
-    .split("\n")                // split for each line
-    .filter(x => {
-        return /\S/.test(x);
-    })                          // filter away empy array values
-    
-    .map(x => x.trim());        // remove useless whitespaces from values
-    
+    const parsedRow = statRow
+        .replace(/(\t)/gm, "")       // remove \t
+        .split("\n")                // split for each line
+        .filter(x => {
+            return /\S/.test(x);
+        })                          // filter away empy array values
+
+        .map(x => x.trim());        // remove useless whitespaces from values
+
     return createStats(parsedRow, position)
 }
 
@@ -107,11 +111,29 @@ function createStats(row, position) {
         throws
     };
 }
+function writeDataToFile(maps, teamName) {
+    const fileName = `${teamName}.json`;
+
+FileSystem.closeSync(FileSystem.openSync(fileName, 'w'))
+const all = []
+    maps.forEach(map => {
+        const data = []
+        map.players.forEach(x => {
+            data.push(x);
+        });
+        const match = { date: map.date, data}
+        all.push(match);
+    })
+    FileSystem.appendFile(fileName ,JSON.stringify(all), (error) => {
+        if (error) throw error;
+    });
+}
 
 const teamName = "hommattiinatsku"
-//const matchLinks = getTeamMatchLinks(teamName);
-//handleMatchLinks(matchLinks);
-const mockData = JSDOM.fromFile('./mock_data.html').then(x => {
-    getStatsFromDom(x, teamName);
+getTeamMatchLinks(teamName).then(x => {
+    handleMatchLinks(x, teamName);
 });
+/*const mockData = JSDOM.fromFile('./mock_data.html').then(x => {
+    getStatsFromDom(x, teamName);
+});*/
 //getStatsFromDom(mockData);
